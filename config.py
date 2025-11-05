@@ -22,6 +22,12 @@ class Config:
     # 数据存储配置
     DATA_DIR = 'webhooks_data'
     
+    # 数据库配置
+    DATABASE_URL = os.getenv(
+        'DATABASE_URL',
+        'postgresql://postgres:postgres@localhost:5432/webhooks'
+    )
+    
     # AI 分析和转发配置
     ENABLE_AI_ANALYSIS = os.getenv('ENABLE_AI_ANALYSIS', 'true').lower() == 'true'
     FORWARD_URL = os.getenv('FORWARD_URL', 'http://92.38.131.57:8000/webhook')

@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from config import Config
 from logger import logger
+from models import WebhookEvent, get_session
 
 
 def verify_signature(payload, signature, secret=None):
@@ -33,9 +34,60 @@ def verify_signature(payload, signature, secret=None):
     return hmac.compare_digest(expected_signature, signature)
 
 
-def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, client_ip=None, ai_analysis=None):
+def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, client_ip=None, ai_analysis=None, forward_status='pending'):
     """
-    保存 webhook 数据到文件
+    保存 webhook 数据到数据库
+    
+    Args:
+        data: webhook 数据(解析后的)
+        source: 数据来源
+        raw_payload: 原始请求体(bytes)
+        headers: 请求头字典
+        client_ip: 客户端IP地址
+        ai_analysis: AI分析结果
+        forward_status: 转发状态
+    
+    Returns:
+        int: 保存的记录 ID
+    """
+    session = get_session()
+    try:
+        # 创建 webhook 事件记录
+        webhook_event = WebhookEvent(
+            source=source,
+            client_ip=client_ip,
+            timestamp=datetime.now(),
+            raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
+            headers=dict(headers) if headers else {},
+            parsed_data=data,
+            ai_analysis=ai_analysis,
+            importance=ai_analysis.get('importance') if ai_analysis else None,
+            forward_status=forward_status
+        )
+        
+        session.add(webhook_event)
+        session.commit()
+        
+        webhook_id = webhook_event.id
+        logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
+        
+        # 同时保存到文件(保留兼容性)
+        save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+        
+        return webhook_id
+        
+    except Exception as e:
+        session.rollback()
+        logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
+        # 失败时至少保存到文件
+        return save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+    finally:
+        session.close()
+
+
+def save_webhook_to_file(data, source='unknown', raw_payload=None, headers=None, client_ip=None, ai_analysis=None):
+    """
+    保存 webhook 数据到文件(备份方式)
     
     Args:
         data: webhook 数据(解析后的)
@@ -98,7 +150,37 @@ def get_client_ip(request):
 
 def get_all_webhooks(limit=50):
     """
-    获取所有保存的 webhook 数据
+    从数据库获取所有保存的 webhook 数据
+    
+    Args:
+        limit: 返回的最大数量
+    
+    Returns:
+        list: webhook 数据列表（按时间倒序）
+    """
+    session = get_session()
+    try:
+        # 从数据库查询
+        events = session.query(WebhookEvent)\
+            .order_by(WebhookEvent.timestamp.desc())\
+            .limit(limit)\
+            .all()
+        
+        # 转换为字典列表
+        webhooks = [event.to_dict() for event in events]
+        return webhooks
+        
+    except Exception as e:
+        logger.error(f"从数据库查询 webhook 数据失败: {str(e)}")
+        # 失败时降级为文件查询
+        return get_webhooks_from_files(limit)
+    finally:
+        session.close()
+
+
+def get_webhooks_from_files(limit=50):
+    """
+    从文件获取 webhook 数据(备份方式)
     
     Args:
         limit: 返回的最大数量

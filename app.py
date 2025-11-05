@@ -182,15 +182,17 @@ def receive_webhook():
         logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
         
         # 保存 webhook 数据(包含完整的原始信息和 AI 分析结果)
-        filepath = save_webhook_data(
+        # 先不设置 forward_status，等转发后更新
+        webhook_id = save_webhook_data(
             data=data, 
             source=source,
             raw_payload=payload,
             headers=request.headers,
             client_ip=client_ip,
-            ai_analysis=analysis_result
+            ai_analysis=analysis_result,
+            forward_status='pending'
         )
-        logger.info(f"Webhook 数据已保存: {filepath}")
+        logger.info(f"Webhook 数据已保存: ID={webhook_id}")
         
         # 只有高风险的才自动转发到远程服务器
         importance = analysis_result.get('importance', '').lower()
@@ -210,7 +212,7 @@ def receive_webhook():
             'success': True,
             'message': 'Webhook received, analyzed and forwarded successfully',
             'timestamp': datetime.now().isoformat(),
-            'data_saved': filepath,
+            'webhook_id': webhook_id,
             'ai_analysis': analysis_result,
             'forward_status': forward_result.get('status', 'unknown')
         }), 200
@@ -276,15 +278,17 @@ def receive_webhook_with_source(source):
         logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
         
         # 保存 webhook 数据(包含完整的原始信息和 AI 分析结果)
-        filepath = save_webhook_data(
+        # 先不设置 forward_status，等转发后更新
+        webhook_id = save_webhook_data(
             data=data, 
             source=source,
             raw_payload=payload,
             headers=request.headers,
             client_ip=client_ip,
-            ai_analysis=analysis_result
+            ai_analysis=analysis_result,
+            forward_status='pending'
         )
-        logger.info(f"Webhook 数据已保存: {filepath}")
+        logger.info(f"Webhook 数据已保存: ID={webhook_id}")
         
         # 只有高风险的才自动转发到远程服务器
         importance = analysis_result.get('importance', '').lower()
