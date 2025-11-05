@@ -115,10 +115,6 @@ def analyze_with_openai(data, source):
   * 4xxQPS/5xxQPS 等状态码指标
   * CurrentValue 与 Threshold 的对比
   * Resources 中受影响的资源信息
-  
-- 对象存储桶告警应识别为高风险，因为可能影响文件访问
-- 4xx 状态码过高可能是客户端请求问题或权限配置问题
-- 5xx 状态码过高说明服务端有问题，需要立即处理
 
 请直接返回 JSON，不要包含其他文本。"""
         

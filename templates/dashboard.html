@@ -514,6 +514,12 @@
             <label for="configForwardUrl">默认转发地址：</label>
             <input type="text" id="configForwardUrl" placeholder="输入默认转发地址" />
             
+            <label for="configOpenaiApiKey">OpenAI API Key：</label>
+            <input type="password" id="configOpenaiApiKey" placeholder="输入 OpenAI API Key" />
+            
+            <label for="configOpenaiApiUrl">OpenAI API URL：</label>
+            <input type="text" id="configOpenaiApiUrl" placeholder="例: https://openrouter.ai/api/v1" />
+            
             <label for="configOpenaiModel">OpenAI 模型：</label>
             <input type="text" id="configOpenaiModel" placeholder="例: anthropic/claude-sonnet-4" />
             
@@ -857,6 +863,8 @@
                 if (result.success) {
                     const config = result.data;
                     document.getElementById('configForwardUrl').value = config.forward_url || '';
+                    document.getElementById('configOpenaiApiKey').value = config.openai_api_key || '';
+                    document.getElementById('configOpenaiApiUrl').value = config.openai_api_url || '';
                     document.getElementById('configOpenaiModel').value = config.openai_model || '';
                     document.getElementById('configAiPrompt').value = config.ai_system_prompt || '';
                     document.getElementById('configEnableForward').checked = config.enable_forward;
@@ -880,6 +888,8 @@
             try {
                 const configData = {
                     forward_url: document.getElementById('configForwardUrl').value,
+                    openai_api_key: document.getElementById('configOpenaiApiKey').value,
+                    openai_api_url: document.getElementById('configOpenaiApiUrl').value,
                     openai_model: document.getElementById('configOpenaiModel').value,
                     ai_system_prompt: document.getElementById('configAiPrompt').value,
                     enable_forward: document.getElementById('configEnableForward').checked,

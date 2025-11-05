@@ -46,6 +46,8 @@ def get_config():
             'forward_url': Config.FORWARD_URL,
             'enable_forward': Config.ENABLE_FORWARD,
             'enable_ai_analysis': Config.ENABLE_AI_ANALYSIS,
+            'openai_api_key': Config.OPENAI_API_KEY,
+            'openai_api_url': Config.OPENAI_API_URL,
             'openai_model': Config.OPENAI_MODEL,
             'ai_system_prompt': Config.AI_SYSTEM_PROMPT,
             'log_level': Config.LOG_LEVEL
@@ -84,6 +86,14 @@ def update_config():
         if 'enable_ai_analysis' in data:
             set_key(env_file, 'ENABLE_AI_ANALYSIS', str(data['enable_ai_analysis']).lower())
             Config.ENABLE_AI_ANALYSIS = data['enable_ai_analysis']
+            
+        if 'openai_api_key' in data:
+            set_key(env_file, 'OPENAI_API_KEY', data['openai_api_key'])
+            Config.OPENAI_API_KEY = data['openai_api_key']
+            
+        if 'openai_api_url' in data:
+            set_key(env_file, 'OPENAI_API_URL', data['openai_api_url'])
+            Config.OPENAI_API_URL = data['openai_api_url']
             
         if 'openai_model' in data:
             set_key(env_file, 'OPENAI_MODEL', data['openai_model'])
