@@ -99,18 +99,16 @@ def get_all_webhooks(limit=50):
         limit: 返回的最大数量
     
     Returns:
-        list: webhook 数据列表
+        list: webhook 数据列表（按时间倒序）
     """
     if not os.path.exists(Config.DATA_DIR):
         return []
     
     webhooks = []
-    files = sorted(
-        [f for f in os.listdir(Config.DATA_DIR) if f.endswith('.json')],
-        reverse=True  # 最新的在前面
-    )
+    files = [f for f in os.listdir(Config.DATA_DIR) if f.endswith('.json')]
     
-    for filename in files[:limit]:
+    # 读取所有文件
+    for filename in files:
         filepath = os.path.join(Config.DATA_DIR, filename)
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
@@ -120,4 +118,8 @@ def get_all_webhooks(limit=50):
         except Exception as e:
             logger.error(f"读取文件失败 {filename}: {str(e)}")
     
-    return webhooks
+    # 按 timestamp 字段倒序排序（最新的在前面）
+    webhooks.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    
+    # 返回限制数量的结果
+    return webhooks[:limit]
