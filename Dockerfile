@@ -20,6 +20,9 @@ COPY app.py .
 COPY config.py .
 COPY logger.py .
 COPY utils.py .
+COPY models.py .
+COPY ai_analyzer.py .
+COPY templates/ ./templates/
 COPY .env.example .env
 
 # 创建必要的目录
