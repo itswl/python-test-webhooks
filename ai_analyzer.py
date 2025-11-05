@@ -110,7 +110,10 @@ def analyze_with_openai(data, source):
         )
         
         # 解析响应
-        ai_response = response.choices[0].message.content.strip()
+        ai_response = response.choices[0].message.content
+        if ai_response is None:
+            raise ValueError("AI 返回空响应")
+        ai_response = ai_response.strip()
         logger.debug(f"AI 响应: {ai_response}")
         
         # 提取 JSON
@@ -225,22 +228,31 @@ def forward_to_remote(webhook_data, analysis_result, target_url=None):
         target_url = Config.FORWARD_URL
     
     try:
-        # 构建转发数据
-        forward_data = {
-            'original_data': webhook_data.get('parsed_data', {}),
-            'original_source': webhook_data.get('source', 'unknown'),
-            'original_timestamp': webhook_data.get('timestamp'),
-            'ai_analysis': analysis_result,
-            'processed_by': 'webhook-analyzer',
-            'client_ip': webhook_data.get('client_ip')
-        }
+        # 检查是否是飞书 webhook
+        is_feishu = 'feishu.cn' in target_url or 'lark' in target_url
+        
+        if is_feishu:
+            # 构建飞书消息格式
+            forward_data = build_feishu_message(webhook_data, analysis_result)
+        else:
+            # 构建普通转发数据
+            forward_data = {
+                'original_data': webhook_data.get('parsed_data', {}),
+                'original_source': webhook_data.get('source', 'unknown'),
+                'original_timestamp': webhook_data.get('timestamp'),
+                'ai_analysis': analysis_result,
+                'processed_by': 'webhook-analyzer',
+                'client_ip': webhook_data.get('client_ip')
+            }
         
         # 发送到远程服务器
         headers = {
-            'Content-Type': 'application/json',
-            'X-Webhook-Source': f"analyzed-{webhook_data.get('source', 'unknown')}",
-            'X-Analysis-Importance': analysis_result.get('importance', 'unknown')
+            'Content-Type': 'application/json'
         }
+        
+        if not is_feishu:
+            headers['X-Webhook-Source'] = f"analyzed-{webhook_data.get('source', 'unknown')}"
+            headers['X-Analysis-Importance'] = analysis_result.get('importance', 'unknown')
         
         logger.info(f"转发数据到 {target_url}")
         response = requests.post(
@@ -283,3 +295,141 @@ def forward_to_remote(webhook_data, analysis_result, target_url=None):
             'status': 'error',
             'message': str(e)
         }
+
+
+def build_feishu_message(webhook_data, analysis_result):
+    """
+    构建飞书机器人消息格式
+    
+    Args:
+        webhook_data: 原始 webhook 数据
+        analysis_result: AI 分析结果
+    
+    Returns:
+        dict: 飞书消息格式
+    """
+    # 获取基本信息
+    source = webhook_data.get('source', 'unknown')
+    timestamp = webhook_data.get('timestamp', '')
+    importance = analysis_result.get('importance', 'medium')
+    summary = analysis_result.get('summary', '无摘要')
+    event_type = analysis_result.get('event_type', '未知事件')
+    
+    # 重要性颜色和 emoji
+    importance_map = {
+        'high': {'color': 'red', 'emoji': '🔴', 'text': '高'},
+        'medium': {'color': 'orange', 'emoji': '🟠', 'text': '中'},
+        'low': {'color': 'green', 'emoji': '🟢', 'text': '低'}
+    }
+    imp_info = importance_map.get(importance, importance_map['medium'])
+    
+    # 构建卡片消息
+    card_content = {
+        "config": {
+            "wide_screen_mode": True
+        },
+        "header": {
+            "title": {
+                "tag": "plain_text",
+                "content": f"📡 Webhook 事件通知"
+            },
+            "template": imp_info['color']
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "fields": [
+                    {
+                        "is_short": True,
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**来源**\n{source}"
+                        }
+                    },
+                    {
+                        "is_short": True,
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**重要性**\n{imp_info['emoji']} {imp_info['text']}"
+                        }
+                    },
+                    {
+                        "is_short": True,
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**事件类型**\n{event_type}"
+                        }
+                    },
+                    {
+                        "is_short": True,
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**时间**\n{timestamp[:19] if timestamp else '-'}"
+                        }
+                    }
+                ]
+            },
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**📝 事件摘要**\n{summary}"
+                }
+            }
+        ]
+    }
+    
+    # 添加影响范围
+    if analysis_result.get('impact_scope'):
+        card_content['elements'].append({
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": f"**🎯 影响范围**\n{analysis_result.get('impact_scope')}"
+            }
+        })
+    
+    # 添加建议操作
+    if analysis_result.get('actions'):
+        actions_text = '\n'.join([f"{i+1}. {action}" for i, action in enumerate(analysis_result.get('actions', []))])
+        card_content['elements'].append({
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": f"**✅ 建议操作**\n{actions_text}"
+            }
+        })
+    
+    # 添加潜在风险
+    if analysis_result.get('risks'):
+        risks_text = '\n'.join([f"⚠️ {risk}" for risk in analysis_result.get('risks', [])])
+        card_content['elements'].append({
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": f"**⚠️ 潜在风险**\n{risks_text}"
+            }
+        })
+    
+    # 添加分割线
+    card_content['elements'].append({
+        "tag": "hr"
+    })
+    
+    # 添加原始数据（折叠显示）
+    parsed_data = webhook_data.get('parsed_data', {})
+    if parsed_data:
+        import json
+        data_preview = json.dumps(parsed_data, ensure_ascii=False, indent=2)[:500]
+        card_content['elements'].append({
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": f"**📦 原始数据**\n```json\n{data_preview}\n```"
+            }
+        })
+    
+    return {
+        "msg_type": "interactive",
+        "card": card_content
+    }
