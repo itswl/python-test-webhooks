@@ -83,6 +83,49 @@ def reanalyze_webhook(filename):
         }), 500
 
 
+@app.route('/api/forward/<filename>', methods=['POST'])
+def manual_forward_webhook(filename):
+    """手动转发指定的 webhook"""
+    try:
+        import os
+        import json
+        from ai_analyzer import forward_to_remote
+        
+        filepath = os.path.join(Config.DATA_DIR, filename)
+        
+        if not os.path.exists(filepath):
+            return jsonify({
+                'success': False,
+                'error': 'File not found'
+            }), 404
+        
+        # 读取原始数据
+        with open(filepath, 'r', encoding='utf-8') as f:
+            webhook_data = json.load(f)
+        
+        # 获取自定义转发地址（如果提供）
+        custom_url = request.json.get('forward_url') if request.json else None
+        
+        logger.info(f"手动转发 webhook: {filename} 到 {custom_url or Config.FORWARD_URL}")
+        
+        # 转发数据
+        analysis_result = webhook_data.get('ai_analysis', {})
+        forward_result = forward_to_remote(webhook_data, analysis_result, custom_url)
+        
+        return jsonify({
+            'success': forward_result.get('status') == 'success',
+            'result': forward_result,
+            'message': 'Forward completed'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"手动转发失败: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/webhook', methods=['POST'])
 def receive_webhook():
     """

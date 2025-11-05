@@ -317,6 +317,7 @@
             cursor: pointer;
             font-size: 12px;
             transition: all 0.3s;
+            margin-right: 8px;
         }
         
         .btn-reanalyze:hover {
@@ -325,6 +326,27 @@
         }
         
         .btn-reanalyze:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .btn-forward {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+        
+        .btn-forward:hover {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+        
+        .btn-forward:disabled {
             background: #ccc;
             cursor: not-allowed;
         }
@@ -341,6 +363,100 @@
         
         @keyframes spin {
             to { transform: rotate(360deg); }
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideDown 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideDown {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .modal h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .modal label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+        }
+        
+        .modal input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+        
+        .modal input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        
+        .btn-cancel {
+            background: #6c757d;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-cancel:hover {
+            background: #5a6268;
+        }
+        
+        .btn-confirm {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-confirm:hover {
+            background: #5568d3;
         }
     </style>
 </head>
@@ -373,6 +489,19 @@
         
         <div id="webhooksContainer" class="webhooks-container">
             <div class="loading">⏳ 加载中...</div>
+        </div>
+    </div>
+
+    <!-- 转发地址编辑模态框 -->
+    <div id="forwardModal" class="modal">
+        <div class="modal-content">
+            <h2>🚀 转发 Webhook</h2>
+            <label for="forwardUrl">转发地址：</label>
+            <input type="text" id="forwardUrl" placeholder="输入转发地址" />
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeForwardModal()">取消</button>
+                <button class="btn-confirm" onclick="confirmForward()">确认转发</button>
+            </div>
         </div>
     </div>
 
@@ -511,9 +640,14 @@
                 <div class="ai-analysis" id="analysis-${webhook.filename}">
                     <h3>
                         <span>🤖 AI 分析结果</span>
-                        <button class="btn-reanalyze" onclick="reanalyzeWebhook('${webhook.filename}')">
-                            🔄 重新分析
-                        </button>
+                        <div>
+                            <button class="btn-reanalyze" onclick="reanalyzeWebhook('${webhook.filename}')">
+                                🔄 重新分析
+                            </button>
+                            <button class="btn-forward" onclick="openForwardModal('${webhook.filename}')">
+                                🚀 手动转发
+                            </button>
+                        </div>
                     </h3>
                     
                     <div class="ai-analysis-item">
@@ -612,6 +746,64 @@
                     btn.innerHTML = originalText;
                     btn.disabled = false;
                 }, 2000);
+            }
+        }
+        
+        let currentForwardFilename = null;
+        
+        function openForwardModal(filename) {
+            currentForwardFilename = filename;
+            const modal = document.getElementById('forwardModal');
+            const input = document.getElementById('forwardUrl');
+            input.value = 'http://92.38.131.57:8000/webhook'; // 默认地址
+            modal.style.display = 'block';
+        }
+        
+        function closeForwardModal() {
+            const modal = document.getElementById('forwardModal');
+            modal.style.display = 'none';
+            currentForwardFilename = null;
+        }
+        
+        async function confirmForward() {
+            if (!currentForwardFilename) return;
+            
+            const forwardUrl = document.getElementById('forwardUrl').value;
+            if (!forwardUrl) {
+                alert('请输入转发地址');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/forward/${currentForwardFilename}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        forward_url: forwardUrl
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✔️ 转发成功！');
+                    closeForwardModal();
+                } else {
+                    alert('❌ 转发失败：' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('转发请求失败:', error);
+                alert('❌ 请求失败：' + error.message);
+            }
+        }
+        
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('forwardModal');
+            if (event.target === modal) {
+                closeForwardModal();
             }
         }
         
