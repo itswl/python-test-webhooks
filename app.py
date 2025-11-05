@@ -38,6 +38,80 @@ def list_webhooks():
     }), 200
 
 
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    """获取当前配置"""
+    try:
+        config_data = {
+            'forward_url': Config.FORWARD_URL,
+            'enable_forward': Config.ENABLE_FORWARD,
+            'enable_ai_analysis': Config.ENABLE_AI_ANALYSIS,
+            'openai_model': Config.OPENAI_MODEL,
+            'ai_system_prompt': Config.AI_SYSTEM_PROMPT,
+            'log_level': Config.LOG_LEVEL
+        }
+        return jsonify({
+            'success': True,
+            'data': config_data
+        }), 200
+    except Exception as e:
+        logger.error(f"获取配置失败: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/config', methods=['POST'])
+def update_config():
+    """更新配置"""
+    try:
+        import os
+        from dotenv import set_key
+        
+        data = request.get_json()
+        env_file = '.env'
+        
+        # 更新 .env 文件
+        if 'forward_url' in data:
+            set_key(env_file, 'FORWARD_URL', data['forward_url'])
+            Config.FORWARD_URL = data['forward_url']
+            
+        if 'enable_forward' in data:
+            set_key(env_file, 'ENABLE_FORWARD', str(data['enable_forward']).lower())
+            Config.ENABLE_FORWARD = data['enable_forward']
+            
+        if 'enable_ai_analysis' in data:
+            set_key(env_file, 'ENABLE_AI_ANALYSIS', str(data['enable_ai_analysis']).lower())
+            Config.ENABLE_AI_ANALYSIS = data['enable_ai_analysis']
+            
+        if 'openai_model' in data:
+            set_key(env_file, 'OPENAI_MODEL', data['openai_model'])
+            Config.OPENAI_MODEL = data['openai_model']
+            
+        if 'ai_system_prompt' in data:
+            set_key(env_file, 'AI_SYSTEM_PROMPT', data['ai_system_prompt'])
+            Config.AI_SYSTEM_PROMPT = data['ai_system_prompt']
+            
+        if 'log_level' in data:
+            set_key(env_file, 'LOG_LEVEL', data['log_level'])
+            Config.LOG_LEVEL = data['log_level']
+        
+        logger.info("配置已更新")
+        
+        return jsonify({
+            'success': True,
+            'message': '配置更新成功'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"更新配置失败: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/api/reanalyze/<int:webhook_id>', methods=['POST'])
 def reanalyze_webhook(webhook_id):
     """重新分析指定的 webhook"""

@@ -485,6 +485,7 @@
         <div class="controls">
             <button class="btn btn-primary" onclick="loadWebhooks()">🔄 刷新数据</button>
             <button class="btn btn-secondary" onclick="toggleAutoRefresh()">⏱️ <span id="autoRefreshText">开启自动刷新</span></button>
+            <button class="btn btn-secondary" onclick="openConfigModal()">⚙️ 系统配置</button>
         </div>
         
         <div id="webhooksContainer" class="webhooks-container">
@@ -501,6 +502,41 @@
             <div class="modal-buttons">
                 <button class="btn-cancel" onclick="closeForwardModal()">取消</button>
                 <button class="btn-confirm" onclick="confirmForward()">确认转发</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统配置模态框 -->
+    <div id="configModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <h2>⚙️ 系统配置</h2>
+            
+            <label for="configForwardUrl">默认转发地址：</label>
+            <input type="text" id="configForwardUrl" placeholder="输入默认转发地址" />
+            
+            <label for="configOpenaiModel">OpenAI 模型：</label>
+            <input type="text" id="configOpenaiModel" placeholder="例: anthropic/claude-sonnet-4" />
+            
+            <label for="configAiPrompt">AI 提示词：</label>
+            <textarea id="configAiPrompt" rows="6" style="width: 100%; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 14px; margin-bottom: 20px; font-family: inherit;" placeholder="输入 AI 系统提示词"></textarea>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="configEnableForward" style="width: auto; margin-right: 8px;" />
+                    启用自动转发
+                </label>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: inline-flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="configEnableAi" style="width: auto; margin-right: 8px;" />
+                    启用 AI 分析
+                </label>
+            </div>
+            
+            <div class="modal-buttons">
+                <button class="btn-cancel" onclick="closeConfigModal()">取消</button>
+                <button class="btn-confirm" onclick="saveConfig()">保存配置</button>
             </div>
         </div>
     </div>
@@ -801,9 +837,74 @@
         
         // 点击模态框外部关闭
         window.onclick = function(event) {
-            const modal = document.getElementById('forwardModal');
-            if (event.target === modal) {
+            const forwardModal = document.getElementById('forwardModal');
+            const configModal = document.getElementById('configModal');
+            if (event.target === forwardModal) {
                 closeForwardModal();
+            }
+            if (event.target === configModal) {
+                closeConfigModal();
+            }
+        }
+        
+        // 配置管理功能
+        async function openConfigModal() {
+            try {
+                // 获取当前配置
+                const response = await fetch('/api/config');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const config = result.data;
+                    document.getElementById('configForwardUrl').value = config.forward_url || '';
+                    document.getElementById('configOpenaiModel').value = config.openai_model || '';
+                    document.getElementById('configAiPrompt').value = config.ai_system_prompt || '';
+                    document.getElementById('configEnableForward').checked = config.enable_forward;
+                    document.getElementById('configEnableAi').checked = config.enable_ai_analysis;
+                    
+                    document.getElementById('configModal').style.display = 'block';
+                } else {
+                    alert('获取配置失败：' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('获取配置失败:', error);
+                alert('获取配置失败：' + error.message);
+            }
+        }
+        
+        function closeConfigModal() {
+            document.getElementById('configModal').style.display = 'none';
+        }
+        
+        async function saveConfig() {
+            try {
+                const configData = {
+                    forward_url: document.getElementById('configForwardUrl').value,
+                    openai_model: document.getElementById('configOpenaiModel').value,
+                    ai_system_prompt: document.getElementById('configAiPrompt').value,
+                    enable_forward: document.getElementById('configEnableForward').checked,
+                    enable_ai_analysis: document.getElementById('configEnableAi').checked
+                };
+                
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(configData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✔️ 配置保存成功！');
+                    closeConfigModal();
+                } else {
+                    alert('❌ 保存失败：' + (result.error || '未知错误'));
+                }
+            } catch (error) {
+                console.error('保存配置失败:', error);
+                alert('❌ 保存失败：' + error.message);
             }
         }
         
