@@ -86,14 +86,39 @@ def analyze_with_openai(data, source):
   "actions": ["建议操作1", "建议操作2"],
   "risks": ["潜在风险1", "潜在风险2"],
   "impact_scope": "影响范围评估",
-  "monitoring_suggestions": ["监控建衰1", "监控庻衰2"]
+  "monitoring_suggestions": ["监控建议1", "监控建议2"]
 }}
 ```
 
 **重要性判断标准**:
-- high: 错误/故障/关键业务/安全问题/资金相关
-- medium: 警告/性能问题/一般业务事件
-- low: 信息通知/成功事件/常规操作
+- high: 
+  * 告警级别为 critical/error/严重
+  * 4xx/5xx 状态码 QPS 大幅超过阈值（超过2倍）
+  * 服务不可用/故障/错误
+  * 安全事件/攻击检测
+  * 资金/支付相关异常
+  
+- medium: 
+  * 告警级别为 warning/警告
+  * 4xx/5xx 状态码 QPS 略微超过阈值（1-2倍）
+  * 性能问题/慢查询
+  * 一般业务警告
+  
+- low: 
+  * 告警级别为 info/information
+  * 成功事件/正常操作
+  * 常规通知
+
+**特殊识别规则**:
+- 如果是云监控告警（包含 Type、RuleName、Level 等字段），重点关注：
+  * Level 字段（warning/critical）
+  * 4xxQPS/5xxQPS 等状态码指标
+  * CurrentValue 与 Threshold 的对比
+  * Resources 中受影响的资源信息
+  
+- 对象存储桶告警应识别为高风险，因为可能影响文件访问
+- 4xx 状态码过高可能是客户端请求问题或权限配置问题
+- 5xx 状态码过高说明服务端有问题，需要立即处理
 
 请直接返回 JSON，不要包含其他文本。"""
         
