@@ -38,42 +38,51 @@ def list_webhooks():
     }), 200
 
 
-@app.route('/api/reanalyze/<filename>', methods=['POST'])
-def reanalyze_webhook(filename):
+@app.route('/api/reanalyze/<int:webhook_id>', methods=['POST'])
+def reanalyze_webhook(webhook_id):
     """重新分析指定的 webhook"""
     try:
-        import os
-        import json
+        from models import WebhookEvent, get_session
         from ai_analyzer import analyze_webhook_with_ai
         
-        filepath = os.path.join(Config.DATA_DIR, filename)
-        
-        if not os.path.exists(filepath):
+        session = get_session()
+        try:
+            # 从数据库获取 webhook
+            webhook_event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
+            
+            if not webhook_event:
+                return jsonify({
+                    'success': False,
+                    'error': 'Webhook not found'
+                }), 404
+            
+            # 准备分析数据
+            webhook_data = {
+                'source': webhook_event.source,
+                'parsed_data': webhook_event.parsed_data,
+                'timestamp': webhook_event.timestamp.isoformat() if webhook_event.timestamp else None,
+                'client_ip': webhook_event.client_ip
+            }
+            
+            # 重新进行 AI 分析
+            logger.info(f"重新分析 webhook ID: {webhook_id}")
+            analysis_result = analyze_webhook_with_ai(webhook_data)
+            
+            # 更新数据库
+            webhook_event.ai_analysis = analysis_result
+            webhook_event.importance = analysis_result.get('importance')
+            session.commit()
+            
+            logger.info(f"重新分析完成: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+            
             return jsonify({
-                'success': False,
-                'error': 'File not found'
-            }), 404
-        
-        # 读取原始数据
-        with open(filepath, 'r', encoding='utf-8') as f:
-            webhook_data = json.load(f)
-        
-        # 重新进行 AI 分析
-        logger.info(f"重新分析 webhook: {filename}")
-        analysis_result = analyze_webhook_with_ai(webhook_data)
-        
-        # 更新文件中的 AI 分析结果
-        webhook_data['ai_analysis'] = analysis_result
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(webhook_data, f, indent=2, ensure_ascii=False)
-        
-        logger.info(f"重新分析完成: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
-        
-        return jsonify({
-            'success': True,
-            'analysis': analysis_result,
-            'message': 'Reanalysis completed successfully'
-        }), 200
+                'success': True,
+                'analysis': analysis_result,
+                'message': 'Reanalysis completed successfully'
+            }), 200
+            
+        finally:
+            session.close()
         
     except Exception as e:
         logger.error(f"重新分析失败: {str(e)}", exc_info=True)
@@ -83,40 +92,53 @@ def reanalyze_webhook(filename):
         }), 500
 
 
-@app.route('/api/forward/<filename>', methods=['POST'])
-def manual_forward_webhook(filename):
+@app.route('/api/forward/<int:webhook_id>', methods=['POST'])
+def manual_forward_webhook(webhook_id):
     """手动转发指定的 webhook"""
     try:
-        import os
-        import json
+        from models import WebhookEvent, get_session
         from ai_analyzer import forward_to_remote
         
-        filepath = os.path.join(Config.DATA_DIR, filename)
-        
-        if not os.path.exists(filepath):
+        session = get_session()
+        try:
+            # 从数据库获取 webhook
+            webhook_event = session.query(WebhookEvent).filter_by(id=webhook_id).first()
+            
+            if not webhook_event:
+                return jsonify({
+                    'success': False,
+                    'error': 'Webhook not found'
+                }), 404
+            
+            # 准备转发数据
+            webhook_data = {
+                'source': webhook_event.source,
+                'parsed_data': webhook_event.parsed_data,
+                'timestamp': webhook_event.timestamp.isoformat() if webhook_event.timestamp else None,
+                'client_ip': webhook_event.client_ip
+            }
+            
+            # 获取自定义转发地址（如果提供）
+            custom_url = request.json.get('forward_url') if request.json else None
+            
+            logger.info(f"手动转发 webhook ID: {webhook_id} 到 {custom_url or Config.FORWARD_URL}")
+            
+            # 转发数据
+            analysis_result = webhook_event.ai_analysis or {}
+            forward_result = forward_to_remote(webhook_data, analysis_result, custom_url)
+            
+            # 更新转发状态
+            webhook_event.forward_status = forward_result.get('status', 'unknown')
+            session.commit()
+            
             return jsonify({
-                'success': False,
-                'error': 'File not found'
-            }), 404
-        
-        # 读取原始数据
-        with open(filepath, 'r', encoding='utf-8') as f:
-            webhook_data = json.load(f)
-        
-        # 获取自定义转发地址（如果提供）
-        custom_url = request.json.get('forward_url') if request.json else None
-        
-        logger.info(f"手动转发 webhook: {filename} 到 {custom_url or Config.FORWARD_URL}")
-        
-        # 转发数据
-        analysis_result = webhook_data.get('ai_analysis', {})
-        forward_result = forward_to_remote(webhook_data, analysis_result, custom_url)
-        
-        return jsonify({
-            'success': forward_result.get('status') == 'success',
-            'result': forward_result,
-            'message': 'Forward completed'
-        }), 200
+                'success': forward_result.get('status') == 'success',
+                'result': forward_result,
+                'message': 'Forward completed'
+            }), 200
+            
+        finally:
+            session.close()
         
     except Exception as e:
         logger.error(f"手动转发失败: {str(e)}", exc_info=True)

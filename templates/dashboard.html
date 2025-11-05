@@ -637,14 +637,14 @@
             }[analysis.importance] || '<span class="badge">未知</span>';
             
             return `
-                <div class="ai-analysis" id="analysis-${webhook.filename}">
+                <div class="ai-analysis" id="analysis-${webhook.id}">
                     <h3>
                         <span>🤖 AI 分析结果</span>
                         <div>
-                            <button class="btn-reanalyze" onclick="reanalyzeWebhook('${webhook.filename}')">
+                            <button class="btn-reanalyze" onclick="reanalyzeWebhook(${webhook.id})">
                                 🔄 重新分析
                             </button>
-                            <button class="btn-forward" onclick="openForwardModal('${webhook.filename}')">
+                            <button class="btn-forward" onclick="openForwardModal(${webhook.id})">
                                 🚀 手动转发
                             </button>
                         </div>
@@ -706,7 +706,7 @@
             `;
         }
         
-        async function reanalyzeWebhook(filename) {
+        async function reanalyzeWebhook(webhookId) {
             const btn = event.target;
             const originalText = btn.innerHTML;
             
@@ -715,7 +715,7 @@
                 btn.disabled = true;
                 btn.innerHTML = '<span class="loading-spinner"></span> 分析中...';
                 
-                const response = await fetch(`/api/reanalyze/${filename}`, {
+                const response = await fetch(`/api/reanalyze/${webhookId}`, {
                     method: 'POST'
                 });
                 
@@ -749,10 +749,10 @@
             }
         }
         
-        let currentForwardFilename = null;
+        let currentForwardId = null;
         
-        function openForwardModal(filename) {
-            currentForwardFilename = filename;
+        function openForwardModal(webhookId) {
+            currentForwardId = webhookId;
             const modal = document.getElementById('forwardModal');
             const input = document.getElementById('forwardUrl');
             input.value = 'https://open.feishu.cn/open-apis/bot/v2/hook/ec9090ad-22f6-458c-98e8-183ff61248ec'; // 默认飞书地址
@@ -762,11 +762,11 @@
         function closeForwardModal() {
             const modal = document.getElementById('forwardModal');
             modal.style.display = 'none';
-            currentForwardFilename = null;
+            currentForwardId = null;
         }
         
         async function confirmForward() {
-            if (!currentForwardFilename) return;
+            if (!currentForwardId) return;
             
             const forwardUrl = document.getElementById('forwardUrl').value;
             if (!forwardUrl) {
@@ -775,7 +775,7 @@
             }
             
             try {
-                const response = await fetch(`/api/forward/${currentForwardFilename}`, {
+                const response = await fetch(`/api/forward/${currentForwardId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
