@@ -4,6 +4,7 @@ import json
 import os
 from datetime import datetime
 from config import Config
+from logger import logger
 
 
 def verify_signature(payload, signature, secret=None):
@@ -88,3 +89,35 @@ def get_client_ip(request):
         return request.headers.get('X-Real-IP')
     else:
         return request.remote_addr
+
+
+def get_all_webhooks(limit=50):
+    """
+    获取所有保存的 webhook 数据
+    
+    Args:
+        limit: 返回的最大数量
+    
+    Returns:
+        list: webhook 数据列表
+    """
+    if not os.path.exists(Config.DATA_DIR):
+        return []
+    
+    webhooks = []
+    files = sorted(
+        [f for f in os.listdir(Config.DATA_DIR) if f.endswith('.json')],
+        reverse=True  # 最新的在前面
+    )
+    
+    for filename in files[:limit]:
+        filepath = os.path.join(Config.DATA_DIR, filename)
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                data['filename'] = filename
+                webhooks.append(data)
+        except Exception as e:
+            logger.error(f"读取文件失败 {filename}: {str(e)}")
+    
+    return webhooks

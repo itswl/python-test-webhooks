@@ -1,8 +1,9 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from datetime import datetime
 from config import Config
 from logger import logger
-from utils import verify_signature, save_webhook_data, get_client_ip
+from utils import verify_signature, save_webhook_data, get_client_ip, get_all_webhooks
+import os
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -15,6 +16,24 @@ def health_check():
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
         'service': 'webhook-receiver'
+    }), 200
+
+
+@app.route('/', methods=['GET'])
+def dashboard():
+    """Webhook 数据展示页面"""
+    return render_template('dashboard.html')
+
+
+@app.route('/api/webhooks', methods=['GET'])
+def list_webhooks():
+    """获取 webhook 列表 API"""
+    limit = request.args.get('limit', 50, type=int)
+    webhooks = get_all_webhooks(limit=limit)
+    return jsonify({
+        'success': True,
+        'count': len(webhooks),
+        'data': webhooks
     }), 200
 
 

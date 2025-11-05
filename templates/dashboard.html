@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webhook 接收监控</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .header .stats {
+            display: flex;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .stat-item .label {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .stat-item .value {
+            color: #667eea;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+        
+        .webhooks-container {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .webhook-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .webhook-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+        
+        .webhook-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        
+        .webhook-source {
+            display: inline-block;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .webhook-time {
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .webhook-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .info-label {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .info-value {
+            color: #333;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .webhook-data {
+            margin-top: 15px;
+        }
+        
+        .section-title {
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.6;
+            border-left: 3px solid #667eea;
+        }
+        
+        .empty-state {
+            background: white;
+            padding: 60px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .empty-state svg {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+        
+        .empty-state h2 {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .empty-state p {
+            color: #999;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 18px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Webhook 接收监控</h1>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="label">总接收数</span>
+                    <span class="value" id="totalCount">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="label">服务状态</span>
+                    <span class="value" id="serviceStatus">
+                        <span class="badge badge-success">运行中</span>
+                    </span>
+                </div>
+                <div class="stat-item">
+                    <span class="label">最后更新</span>
+                    <span class="value" style="font-size: 16px; color: #999;" id="lastUpdate">-</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="loadWebhooks()">🔄 刷新数据</button>
+            <button class="btn btn-secondary" onclick="toggleAutoRefresh()">⏱️ <span id="autoRefreshText">开启自动刷新</span></button>
+        </div>
+        
+        <div id="webhooksContainer" class="webhooks-container">
+            <div class="loading">⏳ 加载中...</div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval = null;
+        
+        function formatTime(timestamp) {
+            const date = new Date(timestamp);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+        
+        function timeAgo(timestamp) {
+            const now = new Date();
+            const past = new Date(timestamp);
+            const seconds = Math.floor((now - past) / 1000);
+            
+            if (seconds < 60) return `${seconds}秒前`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`;
+            if (seconds < 86400) return `${Math.floor(seconds / 3600)}小时前`;
+            return `${Math.floor(seconds / 86400)}天前`;
+        }
+        
+        async function loadWebhooks() {
+            try {
+                const response = await fetch('/api/webhooks?limit=50');
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayWebhooks(result.data);
+                    document.getElementById('totalCount').textContent = result.count;
+                    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
+                }
+            } catch (error) {
+                console.error('加载失败:', error);
+                document.getElementById('webhooksContainer').innerHTML = `
+                    <div class="empty-state">
+                        <h2>❌ 加载失败</h2>
+                        <p>无法连接到服务器，请检查服务是否正常运行</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function displayWebhooks(webhooks) {
+            const container = document.getElementById('webhooksContainer');
+            
+            if (webhooks.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                        </svg>
+                        <h2>暂无数据</h2>
+                        <p>还没有接收到任何 webhook 请求</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = webhooks.map(webhook => `
+                <div class="webhook-card">
+                    <div class="webhook-header">
+                        <span class="webhook-source">${webhook.source || 'unknown'}</span>
+                        <span class="webhook-time">${formatTime(webhook.timestamp)} (${timeAgo(webhook.timestamp)})</span>
+                    </div>
+                    
+                    <div class="webhook-info">
+                        <div class="info-item">
+                            <span class="info-label">客户端 IP</span>
+                            <span class="info-value">${webhook.client_ip || '-'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">文件名</span>
+                            <span class="info-value">${webhook.filename || '-'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">User-Agent</span>
+                            <span class="info-value">${webhook.headers?.['User-Agent'] || '-'}</span>
+                        </div>
+                    </div>
+                    
+                    ${webhook.raw_payload ? `
+                    <div class="webhook-data">
+                        <div class="section-title">📄 原始请求体</div>
+                        <pre>${escapeHtml(webhook.raw_payload)}</pre>
+                    </div>
+                    ` : ''}
+                    
+                    ${webhook.parsed_data ? `
+                    <div class="webhook-data">
+                        <div class="section-title">📦 解析后数据</div>
+                        <pre>${JSON.stringify(webhook.parsed_data, null, 2)}</pre>
+                    </div>
+                    ` : ''}
+                    
+                    ${webhook.headers && Object.keys(webhook.headers).length > 0 ? `
+                    <div class="webhook-data">
+                        <div class="section-title">📋 请求头</div>
+                        <pre>${JSON.stringify(webhook.headers, null, 2)}</pre>
+                    </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function toggleAutoRefresh() {
+            const btn = document.getElementById('autoRefreshText');
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                btn.textContent = '开启自动刷新';
+            } else {
+                autoRefreshInterval = setInterval(loadWebhooks, 5000);
+                btn.textContent = '关闭自动刷新';
+                loadWebhooks();
+            }
+        }
+        
+        // 初始加载
+        loadWebhooks();
+    </script>
+</body>
+</html>
