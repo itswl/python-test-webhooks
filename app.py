@@ -192,9 +192,18 @@ def receive_webhook():
         )
         logger.info(f"Webhook 数据已保存: {filepath}")
         
-        # 转发到远程服务器
-        forward_result = forward_to_remote(webhook_full_data, analysis_result)
-        logger.info(f"转发结果: {forward_result.get('status', 'unknown')}")
+        # 只有高风险的才自动转发到远程服务器
+        importance = analysis_result.get('importance', '').lower()
+        if importance == 'high':
+            logger.info(f"检测到高风险事件，开始自动转发...")
+            forward_result = forward_to_remote(webhook_full_data, analysis_result)
+            logger.info(f"转发结果: {forward_result.get('status', 'unknown')}")
+        else:
+            logger.info(f"事件风险等级为 {importance}，跳过自动转发")
+            forward_result = {
+                'status': 'skipped',
+                'reason': f'importance is {importance}, only high importance events are auto-forwarded'
+            }
         
         # 返回成功响应(包含分析和转发结果)
         return jsonify({
@@ -277,9 +286,18 @@ def receive_webhook_with_source(source):
         )
         logger.info(f"Webhook 数据已保存: {filepath}")
         
-        # 转发到远程服务器
-        forward_result = forward_to_remote(webhook_full_data, analysis_result)
-        logger.info(f"转发结果: {forward_result.get('status', 'unknown')}")
+        # 只有高风险的才自动转发到远程服务器
+        importance = analysis_result.get('importance', '').lower()
+        if importance == 'high':
+            logger.info(f"检测到高风险事件，开始自动转发...")
+            forward_result = forward_to_remote(webhook_full_data, analysis_result)
+            logger.info(f"转发结果: {forward_result.get('status', 'unknown')}")
+        else:
+            logger.info(f"事件风险等级为 {importance}，跳过自动转发")
+            forward_result = {
+                'status': 'skipped',
+                'reason': f'importance is {importance}, only high importance events are auto-forwarded'
+            }
         
         # 返回成功响应(包含分析和转发结果)
         return jsonify({
