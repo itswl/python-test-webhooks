@@ -27,6 +27,23 @@ class Config:
     FORWARD_URL = os.getenv('FORWARD_URL', 'http://92.38.131.57:8000/webhook')
     ENABLE_FORWARD = os.getenv('ENABLE_FORWARD', 'true').lower() == 'true'
     
+    # OpenAI API 配置
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    OPENAI_API_URL = os.getenv('OPENAI_API_URL', 'https://openrouter.ai/api/v1')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'anthropic/claude-sonnet-4')
+    
+    # AI 提示词配置
+    AI_SYSTEM_PROMPT = os.getenv(
+        'AI_SYSTEM_PROMPT',
+        '你是一个专业的 DevOps 和系统运维专家，擅长分析 webhook 事件并提供准确的运维建议。'
+        '你的职责是：'
+        '1. 快速识别事件类型和严重程度 '
+        '2. 提供清晰的问题摘要 '
+        '3. 给出可执行的处理建议 '
+        '4. 识别潜在风险和影响范围 '
+        '5. 建议监控和预防措施'
+    )
+    
     # JSON 配置
     JSON_SORT_KEYS = False
     JSONIFY_PRETTYPRINT_REGULAR = True

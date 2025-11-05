@@ -2,6 +2,7 @@ import requests
 import json
 from logger import logger
 from config import Config
+from openai import OpenAI
 
 
 def analyze_webhook_with_ai(webhook_data):
@@ -14,40 +15,130 @@ def analyze_webhook_with_ai(webhook_data):
     Returns:
         dict: AI 分析结果
     """
+    # 检查是否启用 AI 分析
+    if not Config.ENABLE_AI_ANALYSIS:
+        logger.info("AI 分析功能已禁用，使用基础规则分析")
+        source = webhook_data.get('source', 'unknown')
+        parsed_data = webhook_data.get('parsed_data', {})
+        return analyze_with_rules(parsed_data, source)
+    
+    # 检查 API Key
+    if not Config.OPENAI_API_KEY:
+        logger.warning("OpenAI API Key 未配置，降级为规则分析")
+        source = webhook_data.get('source', 'unknown')
+        parsed_data = webhook_data.get('parsed_data', {})
+        return analyze_with_rules(parsed_data, source)
+    
     try:
         # 提取关键信息
         source = webhook_data.get('source', 'unknown')
         parsed_data = webhook_data.get('parsed_data', {})
         
-        # 构建分析提示词
-        prompt = f"""
-请分析以下 webhook 数据:
-
-来源: {source}
-数据内容: {json.dumps(parsed_data, ensure_ascii=False, indent=2)}
-
-请提供以下分析:
-1. 事件类型和重要性级别 (高/中/低)
-2. 关键信息摘要
-3. 建议的后续处理动作
-4. 潜在风险或注意事项
-
-请以JSON格式返回分析结果。
-"""
-        
-        # 这里使用简单的规则分析,你可以替换为真实的 AI API
-        analysis = analyze_with_rules(parsed_data, source)
+        # 使用真实的 OpenAI API 分析
+        analysis = analyze_with_openai(parsed_data, source)
         
         logger.info(f"AI 分析完成: {source}")
         return analysis
         
     except Exception as e:
-        logger.error(f"AI 分析失败: {str(e)}", exc_info=True)
-        return {
-            'status': 'error',
-            'message': f'分析失败: {str(e)}',
-            'importance': 'unknown'
-        }
+        logger.error(f"AI 分析失败: {str(e)}，降级为规则分析", exc_info=True)
+        # 如果 AI 分析失败，降级为规则分析
+        source = webhook_data.get('source', 'unknown')
+        parsed_data = webhook_data.get('parsed_data', {})
+        return analyze_with_rules(parsed_data, source)
+
+
+def analyze_with_openai(data, source):
+    """
+    使用 OpenAI API 分析 webhook 数据
+    
+    Args:
+        data: 要分析的数据
+        source: 数据来源
+    
+    Returns:
+        dict: AI 分析结果
+    """
+    try:
+        # 初始化 OpenAI 客户端
+        client = OpenAI(
+            api_key=Config.OPENAI_API_KEY,
+            base_url=Config.OPENAI_API_URL
+        )
+        
+        # 构建分析提示词
+        user_prompt = f"""请分析以下 webhook 事件：
+
+**来源**: {source}
+**数据内容**: 
+```json
+{json.dumps(data, ensure_ascii=False, indent=2)}
+```
+
+请按照以下 JSON 格式返回分析结果：
+
+```json
+{{
+  "source": "来源系统",
+  "event_type": "事件类型",
+  "importance": "high/medium/low",
+  "summary": "事件摘要（中文，50字内）",
+  "actions": ["建议操作1", "建议操作2"],
+  "risks": ["潜在风险1", "潜在风险2"],
+  "impact_scope": "影响范围评估",
+  "monitoring_suggestions": ["监控建衰1", "监控庻衰2"]
+}}
+```
+
+**重要性判断标准**:
+- high: 错误/故障/关键业务/安全问题/资金相关
+- medium: 警告/性能问题/一般业务事件
+- low: 信息通知/成功事件/常规操作
+
+请直接返回 JSON，不要包含其他文本。"""
+        
+        # 调用 OpenAI API
+        logger.info(f"调用 OpenAI API 分析 webhook: {source}")
+        response = client.chat.completions.create(
+            model=Config.OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": Config.AI_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3,
+            max_tokens=1000
+        )
+        
+        # 解析响应
+        ai_response = response.choices[0].message.content.strip()
+        logger.debug(f"AI 响应: {ai_response}")
+        
+        # 提取 JSON
+        if '```json' in ai_response:
+            json_start = ai_response.find('```json') + 7
+            json_end = ai_response.find('```', json_start)
+            ai_response = ai_response[json_start:json_end].strip()
+        elif '```' in ai_response:
+            json_start = ai_response.find('```') + 3
+            json_end = ai_response.find('```', json_start)
+            ai_response = ai_response[json_start:json_end].strip()
+        
+        analysis_result = json.loads(ai_response)
+        
+        # 确保必需字段存在
+        if 'source' not in analysis_result:
+            analysis_result['source'] = source
+        if 'importance' not in analysis_result:
+            analysis_result['importance'] = 'medium'
+        
+        return analysis_result
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"AI 响应 JSON 解析失败: {str(e)}")
+        raise
+    except Exception as e:
+        logger.error(f"OpenAI API 调用失败: {str(e)}")
+        raise
 
 
 def analyze_with_rules(data, source):
