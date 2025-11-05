@@ -33,7 +33,7 @@ def verify_signature(payload, signature, secret=None):
     return hmac.compare_digest(expected_signature, signature)
 
 
-def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, client_ip=None):
+def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, client_ip=None, ai_analysis=None):
     """
     保存 webhook 数据到文件
     
@@ -43,6 +43,7 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
         raw_payload: 原始请求体(bytes)
         headers: 请求头字典
         client_ip: 客户端IP地址
+        ai_analysis: AI分析结果
     
     Returns:
         str: 保存的文件路径
@@ -65,6 +66,10 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
         'raw_payload': raw_payload.decode('utf-8') if raw_payload else None,
         'parsed_data': data
     }
+    
+    # 添加 AI 分析结果
+    if ai_analysis:
+        full_data['ai_analysis'] = ai_analysis
     
     # 保存数据
     with open(filepath, 'w', encoding='utf-8') as f:

@@ -38,6 +38,51 @@ def list_webhooks():
     }), 200
 
 
+@app.route('/api/reanalyze/<filename>', methods=['POST'])
+def reanalyze_webhook(filename):
+    """重新分析指定的 webhook"""
+    try:
+        import os
+        import json
+        from ai_analyzer import analyze_webhook_with_ai
+        
+        filepath = os.path.join(Config.DATA_DIR, filename)
+        
+        if not os.path.exists(filepath):
+            return jsonify({
+                'success': False,
+                'error': 'File not found'
+            }), 404
+        
+        # 读取原始数据
+        with open(filepath, 'r', encoding='utf-8') as f:
+            webhook_data = json.load(f)
+        
+        # 重新进行 AI 分析
+        logger.info(f"重新分析 webhook: {filename}")
+        analysis_result = analyze_webhook_with_ai(webhook_data)
+        
+        # 更新文件中的 AI 分析结果
+        webhook_data['ai_analysis'] = analysis_result
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(webhook_data, f, indent=2, ensure_ascii=False)
+        
+        logger.info(f"重新分析完成: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        
+        return jsonify({
+            'success': True,
+            'analysis': analysis_result,
+            'message': 'Reanalysis completed successfully'
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"重新分析失败: {str(e)}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @app.route('/webhook', methods=['POST'])
 def receive_webhook():
     """
@@ -81,16 +126,6 @@ def receive_webhook():
                 'error': 'Invalid JSON payload'
             }), 400
         
-        # 保存 webhook 数据(包含完整的原始信息)
-        filepath = save_webhook_data(
-            data=data, 
-            source=source,
-            raw_payload=payload,
-            headers=request.headers,
-            client_ip=client_ip
-        )
-        logger.info(f"Webhook 数据已保存: {filepath}")
-        
         # AI 分析 webhook 数据
         webhook_full_data = {
             'source': source,
@@ -102,6 +137,17 @@ def receive_webhook():
         logger.info("开始 AI 分析...")
         analysis_result = analyze_webhook_with_ai(webhook_full_data)
         logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        
+        # 保存 webhook 数据(包含完整的原始信息和 AI 分析结果)
+        filepath = save_webhook_data(
+            data=data, 
+            source=source,
+            raw_payload=payload,
+            headers=request.headers,
+            client_ip=client_ip,
+            ai_analysis=analysis_result
+        )
+        logger.info(f"Webhook 数据已保存: {filepath}")
         
         # 转发到远程服务器
         forward_result = forward_to_remote(webhook_full_data, analysis_result)
@@ -165,16 +211,6 @@ def receive_webhook_with_source(source):
                 'error': 'Invalid JSON payload'
             }), 400
         
-        # 保存 webhook 数据(包含完整的原始信息)
-        filepath = save_webhook_data(
-            data=data, 
-            source=source,
-            raw_payload=payload,
-            headers=request.headers,
-            client_ip=client_ip
-        )
-        logger.info(f"Webhook 数据已保存: {filepath}")
-        
         # AI 分析 webhook 数据
         webhook_full_data = {
             'source': source,
@@ -186,6 +222,17 @@ def receive_webhook_with_source(source):
         logger.info("开始 AI 分析...")
         analysis_result = analyze_webhook_with_ai(webhook_full_data)
         logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        
+        # 保存 webhook 数据(包含完整的原始信息和 AI 分析结果)
+        filepath = save_webhook_data(
+            data=data, 
+            source=source,
+            raw_payload=payload,
+            headers=request.headers,
+            client_ip=client_ip,
+            ai_analysis=analysis_result
+        )
+        logger.info(f"Webhook 数据已保存: {filepath}")
         
         # 转发到远程服务器
         forward_result = forward_to_remote(webhook_full_data, analysis_result)
