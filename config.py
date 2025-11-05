@@ -22,6 +22,11 @@ class Config:
     # 数据存储配置
     DATA_DIR = 'webhooks_data'
     
+    # AI 分析和转发配置
+    ENABLE_AI_ANALYSIS = os.getenv('ENABLE_AI_ANALYSIS', 'true').lower() == 'true'
+    FORWARD_URL = os.getenv('FORWARD_URL', 'http://92.38.131.57:8000/webhook')
+    ENABLE_FORWARD = os.getenv('ENABLE_FORWARD', 'true').lower() == 'true'
+    
     # JSON 配置
     JSON_SORT_KEYS = False
     JSONIFY_PRETTYPRINT_REGULAR = True

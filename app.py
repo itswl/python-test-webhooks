@@ -3,6 +3,7 @@ from datetime import datetime
 from config import Config
 from logger import logger
 from utils import verify_signature, save_webhook_data, get_client_ip, get_all_webhooks
+from ai_analyzer import analyze_webhook_with_ai, forward_to_remote
 import os
 
 app = Flask(__name__)
@@ -90,15 +91,30 @@ def receive_webhook():
         )
         logger.info(f"Webhook 数据已保存: {filepath}")
         
-        # 这里可以添加你的业务逻辑处理
-        # 例如: process_webhook_data(data, source)
+        # AI 分析 webhook 数据
+        webhook_full_data = {
+            'source': source,
+            'parsed_data': data,
+            'timestamp': datetime.now().isoformat(),
+            'client_ip': client_ip
+        }
         
-        # 返回成功响应
+        logger.info("开始 AI 分析...")
+        analysis_result = analyze_webhook_with_ai(webhook_full_data)
+        logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        
+        # 转发到远程服务器
+        forward_result = forward_to_remote(webhook_full_data, analysis_result)
+        logger.info(f"转发结果: {forward_result.get('status', 'unknown')}")
+        
+        # 返回成功响应(包含分析和转发结果)
         return jsonify({
             'success': True,
-            'message': 'Webhook received successfully',
+            'message': 'Webhook received, analyzed and forwarded successfully',
             'timestamp': datetime.now().isoformat(),
-            'data_saved': filepath
+            'data_saved': filepath,
+            'ai_analysis': analysis_result,
+            'forward_status': forward_result.get('status', 'unknown')
         }), 200
         
     except Exception as e:
@@ -159,12 +175,30 @@ def receive_webhook_with_source(source):
         )
         logger.info(f"Webhook 数据已保存: {filepath}")
         
-        # 返回成功响应
+        # AI 分析 webhook 数据
+        webhook_full_data = {
+            'source': source,
+            'parsed_data': data,
+            'timestamp': datetime.now().isoformat(),
+            'client_ip': client_ip
+        }
+        
+        logger.info("开始 AI 分析...")
+        analysis_result = analyze_webhook_with_ai(webhook_full_data)
+        logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        
+        # 转发到远程服务器
+        forward_result = forward_to_remote(webhook_full_data, analysis_result)
+        logger.info(f"转发结果: {forward_result.get('status', 'unknown')}")
+        
+        # 返回成功响应(包含分析和转发结果)
         return jsonify({
             'success': True,
-            'message': f'Webhook from {source} received successfully',
+            'message': f'Webhook from {source} received, analyzed and forwarded successfully',
             'timestamp': datetime.now().isoformat(),
-            'source': source
+            'source': source,
+            'ai_analysis': analysis_result,
+            'forward_status': forward_result.get('status', 'unknown')
         }), 200
         
     except Exception as e:
