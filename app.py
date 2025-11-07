@@ -50,7 +50,9 @@ def get_config():
             'openai_api_url': Config.OPENAI_API_URL,
             'openai_model': Config.OPENAI_MODEL,
             'ai_system_prompt': Config.AI_SYSTEM_PROMPT,
-            'log_level': Config.LOG_LEVEL
+            'log_level': Config.LOG_LEVEL,
+            'duplicate_alert_time_window': Config.DUPLICATE_ALERT_TIME_WINDOW,
+            'forward_duplicate_alerts': Config.FORWARD_DUPLICATE_ALERTS
         }
         return jsonify({
             'success': True,
@@ -106,6 +108,14 @@ def update_config():
         if 'log_level' in data:
             set_key(env_file, 'LOG_LEVEL', data['log_level'])
             Config.LOG_LEVEL = data['log_level']
+        
+        if 'duplicate_alert_time_window' in data:
+            set_key(env_file, 'DUPLICATE_ALERT_TIME_WINDOW', str(data['duplicate_alert_time_window']))
+            Config.DUPLICATE_ALERT_TIME_WINDOW = int(data['duplicate_alert_time_window'])
+        
+        if 'forward_duplicate_alerts' in data:
+            set_key(env_file, 'FORWARD_DUPLICATE_ALERTS', str(data['forward_duplicate_alerts']).lower())
+            Config.FORWARD_DUPLICATE_ALERTS = data['forward_duplicate_alerts']
         
         logger.info("配置已更新")
         
@@ -283,13 +293,25 @@ def receive_webhook():
             'client_ip': client_ip
         }
         
-        logger.info("开始 AI 分析...")
-        analysis_result = analyze_webhook_with_ai(webhook_full_data)
-        logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        # 生成告警哈希值用于去重检测
+        from utils import generate_alert_hash, check_duplicate_alert
+        alert_hash = generate_alert_hash(data, source)
+        is_duplicate, original_event = check_duplicate_alert(alert_hash)
+        
+        if is_duplicate and original_event:
+            # 重复告警，直接复用之前的AI分析结果
+            logger.info(f"检测到重复告警(hash={alert_hash})，复用原始告警{original_event.id}的AI分析结果")
+            analysis_result = original_event.ai_analysis or {}
+            logger.info(f"复用AI分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        else:
+            # 新告警，执行AI分析
+            logger.info("新告警，开始 AI 分析...")
+            analysis_result = analyze_webhook_with_ai(webhook_full_data)
+            logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
         
         # 保存 webhook 数据(包含完整的原始信息和 AI 分析结果)
-        # 先不设置 forward_status，等转发后更新
-        webhook_id = save_webhook_data(
+        # save_webhook_data 已经集成了去重逻辑
+        webhook_id, is_dup, original_id = save_webhook_data(
             data=data, 
             source=source,
             raw_payload=payload,
@@ -298,19 +320,40 @@ def receive_webhook():
             ai_analysis=analysis_result,
             forward_status='pending'
         )
-        logger.info(f"Webhook 数据已保存: ID={webhook_id}")
+        if is_dup:
+            logger.info(f"重复告警已保存: ID={webhook_id}, 原始告警ID={original_id}")
+        else:
+            logger.info(f"Webhook 数据已保存: ID={webhook_id}")
         
         # 只有高风险的才自动转发到远程服务器
         importance = analysis_result.get('importance', '').lower()
+        
+        # 检查是否为重复告警，以及是否允许转发重复告警
+        should_forward = False
+        skip_reason = None
+        
         if importance == 'high':
-            logger.info(f"检测到高风险事件，开始自动转发...")
+            if is_dup and not Config.FORWARD_DUPLICATE_ALERTS:
+                # 重复告警且配置为不转发
+                should_forward = False
+                skip_reason = f'重复告警（原始告警ID={original_id}），根据配置跳过转发'
+            else:
+                should_forward = True
+        else:
+            skip_reason = f'importance is {importance}, only high importance events are auto-forwarded'
+        
+        if should_forward:
+            if is_dup:
+                logger.info(f"检测到高风险重复告警，开始自动转发...")
+            else:
+                logger.info(f"检测到高风险事件，开始自动转发...")
             forward_result = forward_to_remote(webhook_full_data, analysis_result)
             logger.info(f"转发结果: {forward_result.get('status', 'unknown')}")
         else:
-            logger.info(f"事件风险等级为 {importance}，跳过自动转发")
+            logger.info(f"跳过自动转发: {skip_reason}")
             forward_result = {
                 'status': 'skipped',
-                'reason': f'importance is {importance}, only high importance events are auto-forwarded'
+                'reason': skip_reason
             }
         
         # 返回成功响应(包含分析和转发结果)
@@ -320,7 +363,9 @@ def receive_webhook():
             'timestamp': datetime.now().isoformat(),
             'webhook_id': webhook_id,
             'ai_analysis': analysis_result,
-            'forward_status': forward_result.get('status', 'unknown')
+            'forward_status': forward_result.get('status', 'unknown'),
+            'is_duplicate': is_dup,
+            'duplicate_of': original_id if is_dup else None
         }), 200
         
     except Exception as e:
@@ -379,13 +424,25 @@ def receive_webhook_with_source(source):
             'client_ip': client_ip
         }
         
-        logger.info("开始 AI 分析...")
-        analysis_result = analyze_webhook_with_ai(webhook_full_data)
-        logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        # 生成告警哈希值用于去重检测
+        from utils import generate_alert_hash, check_duplicate_alert
+        alert_hash = generate_alert_hash(data, source)
+        is_duplicate, original_event = check_duplicate_alert(alert_hash)
+        
+        if is_duplicate and original_event:
+            # 重复告警，直接复用之前的AI分析结果
+            logger.info(f"检测到重复告警(hash={alert_hash})，复用原始告警{original_event.id}的AI分析结果")
+            analysis_result = original_event.ai_analysis or {}
+            logger.info(f"复用AI分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
+        else:
+            # 新告警，执行AI分析
+            logger.info("新告警，开始 AI 分析...")
+            analysis_result = analyze_webhook_with_ai(webhook_full_data)
+            logger.info(f"AI 分析结果: {analysis_result.get('importance', 'unknown')} - {analysis_result.get('summary', '')}")
         
         # 保存 webhook 数据(包含完整的原始信息和 AI 分析结果)
-        # 先不设置 forward_status，等转发后更新
-        webhook_id = save_webhook_data(
+        # save_webhook_data 已经集成了去重逻辑
+        webhook_id, is_dup, original_id = save_webhook_data(
             data=data, 
             source=source,
             raw_payload=payload,
@@ -394,19 +451,40 @@ def receive_webhook_with_source(source):
             ai_analysis=analysis_result,
             forward_status='pending'
         )
-        logger.info(f"Webhook 数据已保存: ID={webhook_id}")
+        if is_dup:
+            logger.info(f"重复告警已保存: ID={webhook_id}, 原始告警ID={original_id}")
+        else:
+            logger.info(f"Webhook 数据已保存: ID={webhook_id}")
         
         # 只有高风险的才自动转发到远程服务器
         importance = analysis_result.get('importance', '').lower()
+        
+        # 检查是否为重复告警，以及是否允许转发重复告警
+        should_forward = False
+        skip_reason = None
+        
         if importance == 'high':
-            logger.info(f"检测到高风险事件，开始自动转发...")
+            if is_dup and not Config.FORWARD_DUPLICATE_ALERTS:
+                # 重复告警且配置为不转发
+                should_forward = False
+                skip_reason = f'重复告警（原始告警ID={original_id}），根据配置跳过转发'
+            else:
+                should_forward = True
+        else:
+            skip_reason = f'importance is {importance}, only high importance events are auto-forwarded'
+        
+        if should_forward:
+            if is_dup:
+                logger.info(f"检测到高风险重复告警，开始自动转发...")
+            else:
+                logger.info(f"检测到高风险事件，开始自动转发...")
             forward_result = forward_to_remote(webhook_full_data, analysis_result)
             logger.info(f"转发结果: {forward_result.get('status', 'unknown')}")
         else:
-            logger.info(f"事件风险等级为 {importance}，跳过自动转发")
+            logger.info(f"跳过自动转发: {skip_reason}")
             forward_result = {
                 'status': 'skipped',
-                'reason': f'importance is {importance}, only high importance events are auto-forwarded'
+                'reason': skip_reason
             }
         
         # 返回成功响应(包含分析和转发结果)
@@ -415,8 +493,11 @@ def receive_webhook_with_source(source):
             'message': f'Webhook from {source} received, analyzed and forwarded successfully',
             'timestamp': datetime.now().isoformat(),
             'source': source,
+            'webhook_id': webhook_id,
             'ai_analysis': analysis_result,
-            'forward_status': forward_result.get('status', 'unknown')
+            'forward_status': forward_result.get('status', 'unknown'),
+            'is_duplicate': is_dup,
+            'duplicate_of': original_id if is_dup else None
         }), 200
         
     except Exception as e:

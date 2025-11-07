@@ -50,6 +50,10 @@ class Config:
         '5. 建议监控和预防措施'
     )
     
+    # 重复告警去重配置
+    DUPLICATE_ALERT_TIME_WINDOW = int(os.getenv('DUPLICATE_ALERT_TIME_WINDOW', '24'))  # 小时
+    FORWARD_DUPLICATE_ALERTS = os.getenv('FORWARD_DUPLICATE_ALERTS', 'false').lower() == 'true'  # 是否转发重复告警
+    
     # JSON 配置
     JSON_SORT_KEYS = False
     JSONIFY_PRETTYPRINT_REGULAR = True

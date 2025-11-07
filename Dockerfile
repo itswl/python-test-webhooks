@@ -16,14 +16,18 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制项目文件
+COPY .env.example .env
+COPY ai_analyzer.py .
 COPY app.py .
 COPY config.py .
 COPY logger.py .
-COPY utils.py .
+COPY migrate_db.py .
 COPY models.py .
-COPY ai_analyzer.py .
+COPY utils.py .
 COPY templates/ ./templates/
-COPY .env.example .env
+
+# 注意: 不复制 .env 文件以避免敏感信息打包进镜像
+# 部署时通过挂载卷或环境变量方式注入配置
 
 # 创建必要的目录
 RUN mkdir -p logs webhooks_data

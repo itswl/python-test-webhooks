@@ -2,7 +2,7 @@ import hmac
 import hashlib
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from config import Config
 from logger import logger
 from models import WebhookEvent, get_session
@@ -34,6 +34,121 @@ def verify_signature(payload, signature, secret=None):
     return hmac.compare_digest(expected_signature, signature)
 
 
+def generate_alert_hash(data, source):
+    """
+    生成告警的唯一哈希值，用于识别重复告警
+    
+    Args:
+        data: webhook 数据
+        source: 数据来源
+    
+    Returns:
+        str: SHA256 哈希值
+    """
+    # 提取关键字段用于生成唯一标识
+    # 根据不同的告警来源，提取不同的关键字段
+    key_fields = {
+        'source': source,
+    }
+    
+    # 云监控告警特定字段
+    if isinstance(data, dict):
+        # 告警类型和规则名称
+        if 'Type' in data:
+            key_fields['type'] = data.get('Type')
+        if 'RuleName' in data:
+            key_fields['rule_name'] = data.get('RuleName')
+        if 'event' in data:
+            key_fields['event'] = data.get('event')
+        if 'event_type' in data:
+            key_fields['event_type'] = data.get('event_type')
+        
+        # 资源标识
+        if 'Resources' in data:
+            resources = data.get('Resources', [])
+            if isinstance(resources, list) and len(resources) > 0:
+                # 提取第一个资源的标识
+                first_resource = resources[0]
+                if isinstance(first_resource, dict):
+                    key_fields['resource_id'] = first_resource.get('InstanceId') or first_resource.get('id')
+        
+        # 指标名称
+        if 'MetricName' in data:
+            key_fields['metric_name'] = data.get('MetricName')
+        
+        # 告警级别
+        if 'Level' in data:
+            key_fields['level'] = data.get('Level')
+        
+        # 通用字段
+        if 'alert_id' in data:
+            key_fields['alert_id'] = data.get('alert_id')
+        if 'alert_name' in data:
+            key_fields['alert_name'] = data.get('alert_name')
+        if 'resource_id' in data:
+            key_fields['resource_id'] = data.get('resource_id')
+        if 'service' in data:
+            key_fields['service'] = data.get('service')
+    
+    # 生成稳定的JSON字符串（排序键确保一致性）
+    key_string = json.dumps(key_fields, sort_keys=True, ensure_ascii=False)
+    
+    # 计算SHA256哈希
+    hash_value = hashlib.sha256(key_string.encode('utf-8')).hexdigest()
+    
+    logger.debug(f"生成告警哈希: {hash_value}, 关键字段: {key_fields}")
+    return hash_value
+
+
+def check_duplicate_alert(alert_hash, time_window_hours=None):
+    """
+    检查是否存在重复告警
+    
+    Args:
+        alert_hash: 告警哈希值
+        time_window_hours: 时间窗口（小时），在此时间内的相同告警视为重复
+                          如果为None，使用配置文件中的值
+    
+    Returns:
+        tuple: (is_duplicate, original_event)
+            is_duplicate: 是否为重复告警
+            original_event: 如果是重复告警，返回原始告警事件对象；否则返回None
+    """
+    if not alert_hash:
+        return False, None
+    
+    # 使用配置文件中的时间窗口设置
+    if time_window_hours is None:
+        time_window_hours = Config.DUPLICATE_ALERT_TIME_WINDOW
+    
+    session = get_session()
+    try:
+        # 计算时间窗口的起始时间
+        time_threshold = datetime.now() - timedelta(hours=time_window_hours)
+        
+        # 查询相同哈希值的告警（时间窗口内，且不是重复告警）
+        original_event = session.query(WebhookEvent)\
+            .filter(
+                WebhookEvent.alert_hash == alert_hash,
+                WebhookEvent.timestamp >= time_threshold,
+                WebhookEvent.is_duplicate == 0  # 只查找原始告警
+            )\
+            .order_by(WebhookEvent.timestamp.desc())\
+            .first()
+        
+        if original_event:
+            logger.info(f"检测到重复告警: hash={alert_hash}, 原始告警ID={original_event.id}, 时间窗口={time_window_hours}小时")
+            return True, original_event
+        else:
+            return False, None
+            
+    except Exception as e:
+        logger.error(f"检查重复告警失败: {str(e)}")
+        return False, None
+    finally:
+        session.close()
+
+
 def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, client_ip=None, ai_analysis=None, forward_status='pending'):
     """
     保存 webhook 数据到数据库
@@ -48,39 +163,88 @@ def save_webhook_data(data, source='unknown', raw_payload=None, headers=None, cl
         forward_status: 转发状态
     
     Returns:
-        int: 保存的记录 ID
+        tuple: (webhook_id, is_duplicate, original_event_id)
+            webhook_id: 保存的记录 ID
+            is_duplicate: 是否为重复告警
+            original_event_id: 如果是重复告警，返回原始告警ID
     """
     session = get_session()
     try:
-        # 创建 webhook 事件记录
-        webhook_event = WebhookEvent(
-            source=source,
-            client_ip=client_ip,
-            timestamp=datetime.now(),
-            raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
-            headers=dict(headers) if headers else {},
-            parsed_data=data,
-            ai_analysis=ai_analysis,
-            importance=ai_analysis.get('importance') if ai_analysis else None,
-            forward_status=forward_status
-        )
+        # 生成告警哈希值
+        alert_hash = generate_alert_hash(data, source)
         
-        session.add(webhook_event)
-        session.commit()
+        # 检查是否存在重复告警
+        is_duplicate, original_event = check_duplicate_alert(alert_hash)
         
-        webhook_id = webhook_event.id
-        logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
-        
-        # 同时保存到文件(保留兼容性)
-        save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
-        
-        return webhook_id
+        if is_duplicate and original_event:
+            # 重复告警：更新原始告警的重复计数，并创建新记录标记为重复
+            original_event.duplicate_count = (original_event.duplicate_count or 1) + 1
+            original_event.updated_at = datetime.now()
+            
+            logger.info(f"发现重复告警，原始告警ID={original_event.id}, 已重复{original_event.duplicate_count}次")
+            
+            # 创建重复告警记录（复用原始AI分析结果）
+            webhook_event = WebhookEvent(
+                source=source,
+                client_ip=client_ip,
+                timestamp=datetime.now(),
+                raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
+                headers=dict(headers) if headers else {},
+                parsed_data=data,
+                alert_hash=alert_hash,
+                ai_analysis=original_event.ai_analysis,  # 复用原始AI分析结果
+                importance=original_event.importance,
+                forward_status=forward_status,
+                is_duplicate=1,
+                duplicate_of=original_event.id,
+                duplicate_count=1
+            )
+            
+            session.add(webhook_event)
+            session.commit()
+            
+            webhook_id = webhook_event.id
+            logger.info(f"重复告警已保存: ID={webhook_id}, 复用原始告警{original_event.id}的AI分析结果")
+            
+            # 同时保存到文件(保留兼容性)
+            save_webhook_to_file(data, source, raw_payload, headers, client_ip, original_event.ai_analysis)
+            
+            return webhook_id, True, original_event.id
+        else:
+            # 新告警：正常保存
+            webhook_event = WebhookEvent(
+                source=source,
+                client_ip=client_ip,
+                timestamp=datetime.now(),
+                raw_payload=raw_payload.decode('utf-8') if raw_payload else None,
+                headers=dict(headers) if headers else {},
+                parsed_data=data,
+                alert_hash=alert_hash,
+                ai_analysis=ai_analysis,
+                importance=ai_analysis.get('importance') if ai_analysis else None,
+                forward_status=forward_status,
+                is_duplicate=0,
+                duplicate_of=None,
+                duplicate_count=1
+            )
+            
+            session.add(webhook_event)
+            session.commit()
+            
+            webhook_id = webhook_event.id
+            logger.info(f"Webhook 数据已保存到数据库: ID={webhook_id}")
+            
+            # 同时保存到文件(保留兼容性)
+            save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+            
+            return webhook_id, False, None
         
     except Exception as e:
         session.rollback()
         logger.error(f"保存 webhook 数据到数据库失败: {str(e)}")
         # 失败时至少保存到文件
-        return save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+        file_id = save_webhook_to_file(data, source, raw_payload, headers, client_ip, ai_analysis)
+        return file_id, False, None
     finally:
         session.close()
 

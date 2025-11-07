@@ -24,12 +24,20 @@ class WebhookEvent(Base):
     headers = Column(JSON)
     parsed_data = Column(JSON)
     
+    # 告警去重标识 (基于关键字段的哈希值)
+    alert_hash = Column(String(64), index=True)
+    
     # AI 分析结果
     ai_analysis = Column(JSON)
     importance = Column(String(20), index=True)  # high, medium, low
     
     # 转发状态
     forward_status = Column(String(20))  # success, failed, skipped
+    
+    # 是否为重复告警
+    is_duplicate = Column(Integer, default=0)  # 0: 新告警, 1: 重复告警
+    duplicate_of = Column(Integer)  # 如果是重复告警，指向原始告警的ID
+    duplicate_count = Column(Integer, default=1)  # 重复次数
     
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
@@ -44,9 +52,13 @@ class WebhookEvent(Base):
             'raw_payload': self.raw_payload,
             'headers': self.headers,
             'parsed_data': self.parsed_data,
+            'alert_hash': self.alert_hash,
             'ai_analysis': self.ai_analysis,
             'importance': self.importance,
             'forward_status': self.forward_status,
+            'is_duplicate': self.is_duplicate,
+            'duplicate_of': self.duplicate_of,
+            'duplicate_count': self.duplicate_count,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
