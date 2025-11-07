@@ -28,13 +28,24 @@ def dashboard():
 
 @app.route('/api/webhooks', methods=['GET'])
 def list_webhooks():
-    """获取 webhook 列表 API"""
-    limit = request.args.get('limit', 50, type=int)
-    webhooks = get_all_webhooks(limit=limit)
+    """获取 webhook 列表 API（支持分页）"""
+    page = request.args.get('page', 1, type=int)
+    page_size = request.args.get('page_size', 20, type=int)
+    
+    # 限制每页最大数量
+    page_size = min(page_size, 100)
+    
+    webhooks, total = get_all_webhooks(page=page, page_size=page_size)
+    
     return jsonify({
         'success': True,
-        'count': len(webhooks),
-        'data': webhooks
+        'data': webhooks,
+        'pagination': {
+            'page': page,
+            'page_size': page_size,
+            'total': total,
+            'total_pages': (total + page_size - 1) // page_size if total > 0 else 0
+        }
     }), 200
 
 

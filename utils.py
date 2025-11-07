@@ -312,32 +312,41 @@ def get_client_ip(request):
         return request.remote_addr
 
 
-def get_all_webhooks(limit=50):
+def get_all_webhooks(page=1, page_size=20):
     """
-    从数据库获取所有保存的 webhook 数据
+    从数据库获取所有保存的 webhook 数据（支持分页）
     
     Args:
-        limit: 返回的最大数量
+        page: 页码（从1开始）
+        page_size: 每页数量
     
     Returns:
-        list: webhook 数据列表（按时间倒序）
+        tuple: (webhook数据列表, 总数量)
     """
     session = get_session()
     try:
+        # 查询总数
+        total = session.query(WebhookEvent).count()
+        
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
         # 从数据库查询
         events = session.query(WebhookEvent)\
             .order_by(WebhookEvent.timestamp.desc())\
-            .limit(limit)\
+            .limit(page_size)\
+            .offset(offset)\
             .all()
         
         # 转换为字典列表
         webhooks = [event.to_dict() for event in events]
-        return webhooks
+        return webhooks, total
         
     except Exception as e:
         logger.error(f"从数据库查询 webhook 数据失败: {str(e)}")
         # 失败时降级为文件查询
-        return get_webhooks_from_files(limit)
+        webhooks = get_webhooks_from_files(limit=page_size)
+        return webhooks, len(webhooks)
     finally:
         session.close()
 

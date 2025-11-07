@@ -458,6 +458,78 @@
         .btn-confirm:hover {
             background: #5568d3;
         }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .pagination button {
+            padding: 8px 16px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .pagination button:hover:not(:disabled) {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        .pagination button.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .pagination .page-info {
+            color: #666;
+            font-size: 14px;
+            padding: 0 15px;
+        }
+        
+        .page-size-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+        
+        .page-size-selector label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .page-size-selector select {
+            padding: 6px 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        
+        .page-size-selector select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
     </style>
 </head>
 <body>
@@ -490,6 +562,27 @@
         
         <div id="webhooksContainer" class="webhooks-container">
             <div class="loading">⏳ 加载中...</div>
+        </div>
+        
+        <div class="pagination" id="pagination" style="display: none;">
+            <button id="firstPage" onclick="goToPage(1)">首页</button>
+            <button id="prevPage" onclick="goToPage(currentPage - 1)">上一页</button>
+            <span class="page-info">
+                第 <span id="currentPageNum">1</span> 页 / 共 <span id="totalPages">1</span> 页
+            </span>
+            <button id="nextPage" onclick="goToPage(currentPage + 1)">下一页</button>
+            <button id="lastPage" onclick="goToPage(totalPages)">末页</button>
+            
+            <div class="page-size-selector">
+                <label for="pageSize">每页显示：</label>
+                <select id="pageSize" onchange="changePageSize()">
+                    <option value="10">10 条</option>
+                    <option value="20" selected>20 条</option>
+                    <option value="30">30 条</option>
+                    <option value="50">50 条</option>
+                    <option value="100">100 条</option>
+                </select>
+            </div>
         </div>
     </div>
 
@@ -549,6 +642,10 @@
 
     <script>
         let autoRefreshInterval = null;
+        let currentPage = 1;
+        let pageSize = 20;
+        let totalPages = 1;
+        let totalCount = 0;
         
         function formatTime(timestamp) {
             const date = new Date(timestamp);
@@ -575,12 +672,20 @@
         
         async function loadWebhooks() {
             try {
-                const response = await fetch('/api/webhooks?limit=50');
+                const response = await fetch(`/api/webhooks?page=${currentPage}&page_size=${pageSize}`);
                 const result = await response.json();
                 
                 if (result.success) {
                     displayWebhooks(result.data);
-                    document.getElementById('totalCount').textContent = result.count;
+                    
+                    // 更新分页信息
+                    if (result.pagination) {
+                        totalPages = result.pagination.total_pages;
+                        totalCount = result.pagination.total;
+                        updatePagination();
+                    }
+                    
+                    document.getElementById('totalCount').textContent = totalCount;
                     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-CN');
                 }
             } catch (error) {
@@ -929,6 +1034,43 @@
                 btn.textContent = '关闭自动刷新';
                 loadWebhooks();
             }
+        }
+        
+        function updatePagination() {
+            const pagination = document.getElementById('pagination');
+            const firstBtn = document.getElementById('firstPage');
+            const prevBtn = document.getElementById('prevPage');
+            const nextBtn = document.getElementById('nextPage');
+            const lastBtn = document.getElementById('lastPage');
+            const currentPageNum = document.getElementById('currentPageNum');
+            const totalPagesSpan = document.getElementById('totalPages');
+            
+            // 显示分页栏
+            if (totalPages > 0) {
+                pagination.style.display = 'flex';
+            }
+            
+            // 更新页码显示
+            currentPageNum.textContent = currentPage;
+            totalPagesSpan.textContent = totalPages;
+            
+            // 更新按钮状态
+            firstBtn.disabled = currentPage === 1;
+            prevBtn.disabled = currentPage === 1;
+            nextBtn.disabled = currentPage >= totalPages;
+            lastBtn.disabled = currentPage >= totalPages;
+        }
+        
+        function goToPage(page) {
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            loadWebhooks();
+        }
+        
+        function changePageSize() {
+            pageSize = parseInt(document.getElementById('pageSize').value);
+            currentPage = 1; // 重置到第一页
+            loadWebhooks();
         }
         
         // 初始加载
