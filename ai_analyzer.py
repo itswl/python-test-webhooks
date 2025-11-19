@@ -89,18 +89,19 @@ def analyze_with_openai(data, source):
   "monitoring_suggestions": ["监控建议1", "监控建议2"]
 }}
 ```
-
 **重要性判断标准**:
 - high: 
-  * 告警级别为 critical/error/严重
-  * 4xx/5xx 状态码 QPS 大幅超过阈值（超过2倍）
+  * 告警级别为 critical/error/严重/P0
+  * 4xx/5xx 状态码 QPS 大幅超过阈值（超过4倍）
   * 服务不可用/故障/错误
   * 安全事件/攻击检测
   * 资金/支付相关异常
+  * 数据库相关的异常
+  * 对于 CPU 内存 磁盘空间等 使用率超过 90% 的
   
 - medium: 
   * 告警级别为 warning/警告
-  * 4xx/5xx 状态码 QPS 略微超过阈值（1-2倍）
+  * 4xx/5xx 状态码 QPS 略微超过阈值（2-4倍）
   * 性能问题/慢查询
   * 一般业务警告
   
@@ -111,7 +112,7 @@ def analyze_with_openai(data, source):
 
 **特殊识别规则**:
 - 如果是云监控告警（包含 Type、RuleName、Level 等字段），重点关注：
-  * Level 字段（warning/critical）
+  * Level 字段（warning/critical/error/严重/P0）
   * 4xxQPS/5xxQPS 等状态码指标
   * CurrentValue 与 Threshold 的对比
   * Resources 中受影响的资源信息
