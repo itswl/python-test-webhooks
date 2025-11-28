@@ -4,12 +4,15 @@ FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/python:3.11-slim
 
 # 设置时区为中国上海
 ENV TZ=Asia/Shanghai
-RUN apt-get update && \
-    apt-get install -y tzdata && \
-    ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
-    echo $TZ > /etc/timezone && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# RUN apt-get update && \
+#     apt-get install -y tzdata && \
+#     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+#     echo $TZ > /etc/timezone && \
+#     apt-get clean && \
+#     rm -rf /var/lib/apt/lists/*
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone 
 
 # 设置工作目录
 WORKDIR /app
